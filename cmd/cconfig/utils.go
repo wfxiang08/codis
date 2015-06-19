@@ -35,7 +35,8 @@ func callApi(method HttpMethod, apiPath string, params interface{}, retVal inter
 	if err != nil {
 		return err
 	}
-
+	log.Infof("URL: %s, Params: %s", url, string(b))
+	
 	req, err := http.NewRequest(string(method), url, strings.NewReader(string(b)))
 	if err != nil {
 		return err

@@ -32,6 +32,9 @@ const (
 	NoKey
 )
 
+// 类型
+// 原始的数据
+// 元素?
 type Resp struct {
 	Type  int
 	Raw   []byte
@@ -101,6 +104,7 @@ func Btoi(b []byte) (int, error) {
 }
 
 func readLine(r *bufio.Reader) ([]byte, error) {
+
 	line, err := r.ReadSlice('\n')
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -134,13 +138,16 @@ func raw2Error(r *Resp) []byte {
 }
 
 func (r *Resp) GetOpKeys() (op []byte, keys [][]byte, err error) {
+
+	// 数组?
 	if len(r.Multi) > 0 {
 		op = raw2Bulk(r.Multi[0])
 		if len(op) == 0 || len(op) > 50 {
 			return nil, nil, errors.Errorf("error parse op %s", string(op))
 		}
 	}
-
+	// op在什么地方初初始化?
+	// 普通的数据类型?
 	f, ok := keyFun[string(op)]
 	if !ok {
 		keys, err = defaultGetKeys(r)
@@ -168,6 +175,9 @@ func defaultGetKeys(r *Resp) ([][]byte, error) {
 	return keys, nil
 }
 
+// 读取Redis Command
+// 参考: http://redis.io/topics/protocol
+//
 func Parse(r *bufio.Reader) (*Resp, error) {
 	line, err := readLine(r)
 	if err != nil {
@@ -184,17 +194,21 @@ func Parse(r *bufio.Reader) (*Resp, error) {
 	resp.Raw = append(resp.Raw, line...)
 
 	switch line[0] {
+	// Error
 	case '-':
 		resp.Type = ErrorResp
 		return resp, nil
 	case '+':
+		// 简单的字符串(比较短小的)
 		resp.Type = SimpleString
 		return resp, nil
 	case ':':
 		resp.Type = IntegerResp
 		return resp, nil
 	case '$':
+		// BulkStrings
 		resp.Type = BulkResp
+		// 读取字符串的长度
 		size, err := Btoi(line[1 : len(line)-2])
 		if err != nil {
 			return nil, errors.Trace(err)
@@ -205,6 +219,7 @@ func Parse(r *bufio.Reader) (*Resp, error) {
 		}
 		return resp, nil
 	case '*':
+		// 处理数组
 		i, err := Btoi(line[1 : len(line)-2]) //strip \r\n
 		if err != nil {
 			return nil, errors.Trace(err)
@@ -213,12 +228,14 @@ func Parse(r *bufio.Reader) (*Resp, error) {
 		if i >= 0 {
 			multi := make([]*Resp, i)
 			for j := 0; j < i; j++ {
+				// 递归调用: Parse(接下来出现N个这样的对象)
 				rp, err := Parse(r)
 				if err != nil {
 					return nil, errors.Trace(err)
 				}
 				multi[j] = rp
 			}
+			// 记录数组的成员
 			resp.Multi = multi
 		}
 		return resp, nil
@@ -268,8 +285,9 @@ func ReadBulk(r *bufio.Reader, size int, raw *[]byte) error {
 	n := len(*raw)
 	size += 2 //  \r\n
 
+	// 检查是否安全
 	if cap(*raw)-n < size {
-		old := *raw
+		old := *raw // 这个是什么意思? 拷贝?
 		*raw = make([]byte, 0, len(old)+size)
 		*raw = append(*raw, old...)
 	}
@@ -278,6 +296,8 @@ func ReadBulk(r *bufio.Reader, size int, raw *[]byte) error {
 	if _, err := io.ReadFull(r, (*raw)[n:n+size]); err != nil {
 		return err
 	}
+
+	// slice操作
 	*raw = (*raw)[0 : n+size : cap(*raw)]
 
 	if (*raw)[len(*raw)-2] != '\r' || (*raw)[len(*raw)-1] != '\n' {

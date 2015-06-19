@@ -96,6 +96,9 @@ func (s *session) WritingLoop() {
 	s.lastUnsentResponseSeq = 1
 	for {
 		select {
+		//
+		// 等待来自TaskRunner返回的数据
+		//
 		case resp, ok := <-s.backQ:
 			if !ok {
 				s.Close()
@@ -103,6 +106,7 @@ func (s *session) WritingLoop() {
 				return
 			}
 
+			// 将数据返给Client
 			flush, err := s.handleResponse(resp)
 			if err != nil {
 				log.Warning(s.RemoteAddr(), resp.ctx, errors.ErrorStack(err))

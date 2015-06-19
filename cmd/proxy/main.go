@@ -108,6 +108,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// go作为路由器来对外提供服务
 	s := router.NewServer(addr, httpAddr, conf)
 	s.Run()
 	log.Warning("exit")

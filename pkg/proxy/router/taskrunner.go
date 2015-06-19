@@ -12,16 +12,26 @@ import (
 )
 
 type taskRunner struct {
-	evtbus     chan interface{}
-	in         chan interface{} //*PipelineRequest
-	out        chan interface{}
-	redisAddr  string
-	tasks      *list.List
+	evtbus    chan interface{}
+	in        chan interface{} //*PipelineRequest
+	out       chan interface{}
+	redisAddr string
+	tasks     *list.List
+	// 用于维护req和resp之间的对应关系
+	// 最新的任务放在Back
+	// 最旧的任务放在Front(也就是正在执行的任务)
+
+	// Tasks中的任务都已经开始执行了，数据通过connetion都在写入Redis
+	// 然后数据从Redis返回后，tasks中的任务都分别得到了数据，从而被完成了
+	// 由于内网中网络不是瓶颈，因此通过单一的connection似乎也没有什么压力?
+	// ????
 	c          *redisconn.Conn
 	netTimeout int //second
 	closed     bool
 	wgClose    *sync.WaitGroup
-	latest     time.Time //latest request time stamp
+
+	// 记录最近的请求时间
+	latest time.Time //latest request time stamp
 }
 
 func (tr *taskRunner) readloop() {
@@ -36,6 +46,7 @@ func (tr *taskRunner) readloop() {
 	}
 }
 
+// 将r.req中的数据写入到tr.c中，就是转发到对应的Redis中
 func (tr *taskRunner) dowrite(r *PipelineRequest, flush bool) error {
 	b, err := r.req.Bytes()
 	if err != nil {
@@ -62,6 +73,7 @@ func (tr *taskRunner) handleTask(r *PipelineRequest, flush bool) error {
 	tr.tasks.PushBack(r)
 	tr.latest = time.Now()
 
+	// 将r.req中的数据写入到tr.c中，就是转发到对应的Redis中
 	return errors.Trace(tr.dowrite(r, flush))
 }
 
@@ -111,9 +123,12 @@ func (tr *taskRunner) getOutgoingResponse() {
 			return
 		}
 
+		// 处理完毕正在处理的请求
 		select {
 		case resp := <-tr.out:
 			err := tr.handleResponse(resp)
+
+			// 如果获取返回数据出现错误，那么之后的所有的数据都报错(这种错误一般都是网络错误)
 			if err != nil {
 				tr.cleanupOutgoingTasks(err)
 				return
@@ -154,11 +169,18 @@ func (tr *taskRunner) handleResponse(e interface{}) error {
 	switch e.(type) {
 	case error:
 		return e.(error)
+
 	case *parser.Resp:
+		// 正常数据返回
 		resp := e.(*parser.Resp)
 		e := tr.tasks.Front()
 		req := e.Value.(*PipelineRequest)
+
+		// resp和req是如何对应的呢?
+		// 在TaskRunner和Redis之间保持者单一的连接，因此resp和req的对应也比较简单
 		req.backQ <- &PipelineResponse{ctx: req, resp: resp, err: nil}
+
+		// 处理完毕，则删除tasks
 		tr.tasks.Remove(e)
 		return nil
 	}
@@ -166,6 +188,9 @@ func (tr *taskRunner) handleResponse(e interface{}) error {
 	return nil
 }
 
+/**
+tr.in --> tasks --->
+*/
 func (tr *taskRunner) writeloop() {
 	var err error
 	tick := time.Tick(2 * time.Second)
@@ -185,9 +210,12 @@ func (tr *taskRunner) writeloop() {
 		}
 
 		select {
+
 		case t := <-tr.in:
+			// 有请求: PipelineRequest, 就处理请求
 			tr.processTask(t)
 		case resp := <-tr.out:
+
 			err = tr.handleResponse(resp)
 		case <-tick:
 			if tr.tasks.Len() > 0 && int(time.Since(tr.latest).Seconds()) > tr.netTimeout {
@@ -206,15 +234,20 @@ func NewTaskRunner(addr string, netTimeout int) (*taskRunner, error) {
 		netTimeout: netTimeout,
 	}
 
+	// 至少Redis要能够连接上去?
 	c, err := redisconn.NewConnection(addr, netTimeout)
 	if err != nil {
 		return nil, err
 	}
 
 	tr.c = c
-
+	// 将Request中的数据写入redisConn中
 	go tr.writeloop()
+
+	// 从RedisConn中读取到数据，然后协会到:tr.out中
 	go tr.readloop()
+
+	// readLoop --> tr.out
 
 	return tr, nil
 }

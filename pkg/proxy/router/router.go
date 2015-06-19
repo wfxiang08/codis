@@ -34,7 +34,12 @@ import (
 )
 
 type Server struct {
-	slots  [models.DEFAULT_SLOT_NUM]*Slot
+	// 这个地方我们可以换成其他的数据结构，例如:
+	// services map[string]*Service
+	// Service: serviceName, node
+	//
+	slots [models.DEFAULT_SLOT_NUM]*Slot
+
 	top    *topo.Topology
 	evtbus chan interface{}
 	reqCh  chan *PipelineRequest
@@ -125,6 +130,10 @@ func (s *Server) fillSlot(i int, force bool) {
 func (s *Server) createTaskRunner(slot *Slot) error {
 	dst := slot.dst.Master()
 	if _, ok := s.pipeConns[dst]; !ok {
+
+		// 一个Master对应一个Connection?
+		// TODO: 是否可以建立多一个Connection呢?
+		//
 		tr, err := NewTaskRunner(dst, s.conf.netTimeout)
 		if err != nil {
 			return errors.Errorf("create task runner failed, %v,  %+v, %+v", err, slot.dst, slot.slotInfo)
@@ -136,8 +145,11 @@ func (s *Server) createTaskRunner(slot *Slot) error {
 	return nil
 }
 
+// 保证每一个Slot都有一个TaskRunner
 func (s *Server) createTaskRunners() {
 	for _, slot := range s.slots {
+		// 如果创建失败，则直接返回?
+		// 即便没有创建，也会在Runtime时创建?
 		if err := s.createTaskRunner(slot); err != nil {
 			log.Error(err)
 			return
@@ -213,6 +225,7 @@ func (s *Server) sendBack(c *session, op []byte, keys [][]byte, resp *parser.Res
 	c.backQ <- &PipelineResponse{ctx: pr, err: err, resp: resp}
 }
 
+// client.WritingLoop()
 func (s *Server) redisTunnel(c *session) error {
 	resp, op, keys, err := getRespOpKeys(c)
 	if err != nil {
@@ -220,7 +233,9 @@ func (s *Server) redisTunnel(c *session) error {
 	}
 	k := keys[0]
 
+	// OPSTR
 	opstr := strings.ToUpper(string(op))
+
 	buf, next, err := filter(opstr, keys, c, s.conf.netTimeout)
 	if err != nil {
 		if len(buf) > 0 { //quit command
@@ -236,6 +251,8 @@ func (s *Server) redisTunnel(c *session) error {
 
 	s.counter.Add(opstr, 1)
 	s.counter.Add("ops", 1)
+
+	// 如果处理完毕，没有必要继续走后端服务器
 	if !next {
 		s.sendBack(c, op, keys, resp, buf)
 		return nil
@@ -254,6 +271,7 @@ func (s *Server) redisTunnel(c *session) error {
 		}
 	}
 
+	// 从key到slot的转换
 	i := mapKey2Slot(k)
 
 	//pipeline
@@ -270,6 +288,8 @@ func (s *Server) redisTunnel(c *session) error {
 	pr.wg.Add(1)
 
 	s.reqCh <- pr
+
+	// 当前的Thread停止，等待 wg被唤起
 	pr.wg.Wait()
 
 	return nil
@@ -279,11 +299,18 @@ func (s *Server) handleConn(c net.Conn) {
 	log.Info("new connection", c.RemoteAddr())
 
 	s.counter.Add("connections", 1)
+
+	// net.Conn --> session?
 	client := &session{
-		Conn:        c,
-		r:           bufio.NewReaderSize(c, 32*1024),
-		w:           bufio.NewWriterSize(c, 32*1024),
-		CreateAt:    time.Now(),
+		Conn: c,
+		// 将读写分离出来
+		r: bufio.NewReaderSize(c, 32*1024),
+		w: bufio.NewWriterSize(c, 32*1024),
+
+		// 记录Meta Info
+		CreateAt: time.Now(),
+
+		// 其他配置信息?
 		backQ:       make(chan *PipelineResponse, 1000),
 		closeSignal: &sync.WaitGroup{},
 	}
@@ -308,6 +335,9 @@ func (s *Server) handleConn(c net.Conn) {
 		s.counter.Add("connections", -1)
 	}()
 
+	// 当前的Connection --> Client的工作
+	// 不断监听来自client的请求
+	// 统计&出错处理
 	for {
 		err = s.redisTunnel(client)
 		if err != nil {
@@ -361,6 +391,7 @@ func (s *Server) registerSignal() {
 
 func (s *Server) Run() {
 	log.Infof("listening %s on %s", s.conf.proto, s.addr)
+	// 监听来自Client的TPC请求
 	listener, err := net.Listen(s.conf.proto, s.addr)
 	if err != nil {
 		log.Fatal(err)
@@ -372,6 +403,7 @@ func (s *Server) Run() {
 			log.Warning(errors.ErrorStack(err))
 			continue
 		}
+		// 来一个请求就保持一个长连接
 		go s.handleConn(conn)
 	}
 }
@@ -536,6 +568,7 @@ func (s *Server) handleTopoEvent() {
 	for {
 		select {
 		case r := <-s.reqCh:
+			// 如果收到请求，则如何处理呢?
 			if s.slots[r.slotIdx].slotInfo.State.Status == models.SLOT_STATUS_PRE_MIGRATE {
 				s.bufferedReq.PushBack(r)
 				continue
@@ -548,6 +581,7 @@ func (s *Server) handleTopoEvent() {
 				e = next
 			}
 
+			// 如何将某个Request交给后端呢?
 			s.dispatch(r)
 		case e := <-s.evtbus:
 			switch e.(type) {
@@ -638,6 +672,11 @@ func (s *Server) RegisterAndWait() {
 	s.waitOnline()
 }
 
+/**
+Server的工作流程:
+
+
+*/
 func NewServer(addr string, debugVarAddr string, conf *Conf) *Server {
 	log.Infof("start with configuration: %+v", conf)
 	s := &Server{
@@ -655,6 +694,7 @@ func NewServer(addr string, debugVarAddr string, conf *Conf) *Server {
 		bufferedReq:   list.New(),
 	}
 
+	// 默认的状态是: offline
 	s.pi.Id = conf.proxyId
 	s.pi.State = models.PROXY_STATE_OFFLINE
 	hname, err := os.Hostname()

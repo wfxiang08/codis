@@ -91,19 +91,25 @@ type DeadlineReadWriter interface {
 func handleSpecCommand(cmd string, keys [][]byte, timeout int) ([]byte, bool, bool, error) {
 	var b []byte
 	shouldClose := false
+	// 简单的命令的处理:
+	// PING --> +PONG\r\n
 	switch cmd {
 	case "PING":
 		b = []byte("+PONG\r\n")
+		
 	case "QUIT":
+		// QUIT --> OK
 		b = OK_BYTES
 		shouldClose = true
 	case "SELECT":
+		// 不支持SELECT, AUTH(默认啥都不做)
 		b = OK_BYTES
 	case "AUTH":
 		b = OK_BYTES
 	case "ECHO":
 		if len(keys) > 0 {
 			var err error
+			// ECHO只返回第一个KEY
 			b, err = respcoding.Marshal(string(keys[0]))
 			if err != nil {
 				return nil, true, false, errors.Trace(err)
@@ -206,12 +212,15 @@ func getRespOpKeys(c *session) (*parser.Resp, []byte, [][]byte, error) {
 	return resp, op, keys, nil
 }
 
-func filter(opstr string, keys [][]byte, c *session, timeoutSec int) (rawresp []byte, next bool, err error) {
+func filter(opstr string, keys [][]byte, c *session, timeoutSec int) 
+		(rawresp []byte, next bool, err error) {
+	// 如果使用了违禁的命令，直接切断Connection
 	if !allowOp(opstr) {
 		return nil, false, errors.Trace(fmt.Errorf("%s not allowed", opstr))
 	}
 
 	buf, shouldClose, handled, err := handleSpecCommand(opstr, keys, timeoutSec)
+	
 	if shouldClose { //quit command
 		return buf, false, errors.Trace(io.EOF)
 	}
