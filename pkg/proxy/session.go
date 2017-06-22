@@ -112,7 +112,9 @@ var RespOK = redis.NewString([]byte("OK"))
 
 func (s *Session) Start(d *Router) {
 	s.start.Do(func() {
+		// 初始化一个Session
 		if int(incrSessions()) > s.config.ProxyMaxClients {
+			// 限制最大请求数量
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR max number of clients reached"), true)
 				s.CloseWithError(ErrTooManySessions)
@@ -121,6 +123,7 @@ func (s *Session) Start(d *Router) {
 			return
 		}
 
+		// 离线的proxy不能直接访问
 		if !d.isOnline() {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR router is not online"), true)
@@ -130,14 +133,17 @@ func (s *Session) Start(d *Router) {
 			return
 		}
 
+		// 开始redis的pipeline
 		tasks := NewRequestChanBuffer(1024)
 
 		go func() {
+			// 将redis服务器的response返回给client
 			s.loopWriter(tasks)
 			decrSessions()
 		}()
 
 		go func() {
+			// 读取来自client的请求
 			s.loopReader(tasks, d)
 			tasks.Close()
 		}()
@@ -175,8 +181,15 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 		r.Database = s.database
 		r.UnixNano = start.UnixNano()
 
+		// 处理client的请求
 		if err := s.handleRequest(r, d); err != nil {
 			r.Resp = redis.NewErrorf("ERR handle request, %s", err)
+
+			// 请求发送给backend redis之后，进入task队列
+			// redis是单线程，处理请求时是FIFO,
+			// 如何和pika等配合会存在什么问题呢? 也许在单个的connection上继续保持FIFO
+			// 因此pika会要求codis在后端维护到pika的多个连接，提高并发度
+			//
 			tasks.PushBack(r)
 			if breakOnFailure {
 				return err
@@ -259,6 +272,7 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 		return fmt.Errorf("command '%s' is not allowed", opstr)
 	}
 
+	// Auth直接在Codis这一层处理，不再传递到Backend redis中
 	switch opstr {
 	case "QUIT":
 		return s.handleQuit(r)

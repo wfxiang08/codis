@@ -460,8 +460,10 @@ func (s *sharedBackendConn) BackendConn(database int32, seed uint, must bool) *B
 		return nil
 	}
 
+	// 两种模式:
+	// 单个连接 --> redis-server
+	// 多个连接 --> pika等
 	var parallel = s.conns[database]
-
 	var i = seed
 	for _ = range parallel {
 		i = (i + 1) % uint(len(parallel))

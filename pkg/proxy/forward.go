@@ -14,6 +14,9 @@ import (
 	"github.com/CodisLabs/codis/pkg/utils/log"
 )
 
+// 如何将请求转发给后端redis服务器呢?
+// 单连接?
+// 多连接?
 type forwardMethod interface {
 	GetId() int
 	Forward(s *Slot, r *Request, hkey []byte) error
@@ -34,11 +37,16 @@ func (d *forwardSync) GetId() int {
 
 func (d *forwardSync) Forward(s *Slot, r *Request, hkey []byte) error {
 	s.lock.RLock()
+	// 在处理Request期间，Slot的信息是不允许修改的
+	// 选择BackendConn
+	//      这个地方可以定制不同的策略
 	bc, err := d.process(s, r, hkey)
 	s.lock.RUnlock()
+
 	if err != nil {
 		return err
 	}
+	// 交给BackendConn, 任务完成
 	bc.PushBack(r)
 	return nil
 }
@@ -49,6 +57,9 @@ func (d *forwardSync) process(s *Slot, r *Request, hkey []byte) (*BackendConn, e
 			s.id, hkey)
 		return nil, ErrSlotIsNotReady
 	}
+
+	// 正在迁移过程中，特殊处理
+	// redis的内部处理速度 > 网络开销，即便内部性能下降50%， 应该对外部性能影响不大
 	if s.migrate.bc != nil && len(hkey) != 0 {
 		if err := d.slotsmgrt(s, hkey, r.Database, r.Seed16()); err != nil {
 			log.Debugf("slot-%04d migrate from = %s to %s failed: hash key = '%s', database = %d, error = %s",
@@ -215,7 +226,10 @@ func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int3
 
 func (d *forwardHelper) forward2(s *Slot, r *Request) *BackendConn {
 	var database, seed = r.Database, r.Seed16()
+
+	// 正常状态下的slot
 	if s.migrate.bc == nil && r.IsReadOnly() && len(s.replicaGroups) != 0 {
+		// 如果开启了replica, 那么直接获取readonly的replica
 		for _, group := range s.replicaGroups {
 			var i = seed
 			for _ = range group {

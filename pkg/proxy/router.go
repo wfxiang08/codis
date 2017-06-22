@@ -137,9 +137,13 @@ func (s *Router) isOnline() bool {
 }
 
 func (s *Router) dispatch(r *Request) error {
+	// 获取HashKey
 	hkey := getHashKey(r.Multi, r.OpStr)
+	// 计算Hash, 计算slot
 	var id = Hash(hkey) % MaxSlotNum
 	slot := &s.slots[id]
+
+	// 请求交给slot去处理
 	return slot.forward(r, hkey)
 }
 

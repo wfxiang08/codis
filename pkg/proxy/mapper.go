@@ -284,6 +284,11 @@ func getOpInfo(multi []*redis.Resp) (string, OpFlag, error) {
 	return string(op), FlagMayWrite, nil
 }
 
+//
+// Hash的两种计算方法
+// 1. 正常的key
+// 2. 带有{}的key, 其中{}内部的数据作为hash映射，因此key最好不要使用json之类的数据
+//
 func Hash(key []byte) uint32 {
 	const (
 		TagBeg = '{'
@@ -297,6 +302,10 @@ func Hash(key []byte) uint32 {
 	return crc32.ChecksumIEEE(key)
 }
 
+// Redis的Key所在的位置
+// 默认在index = 1, 例如： GET KEY
+// 特殊命令特殊处理
+//
 func getHashKey(multi []*redis.Resp, opstr string) []byte {
 	var index = 1
 	switch opstr {

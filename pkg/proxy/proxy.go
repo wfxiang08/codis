@@ -72,6 +72,8 @@ func New(config *Config) (*Proxy, error) {
 	s.model = &models.Proxy{
 		StartTime: time.Now().String(),
 	}
+
+	// 读取proxy的配置信息&所在系统的信息
 	s.model.ProductName = config.ProductName
 	s.model.DataCenter = config.ProxyDataCenter
 	s.model.Pid = os.Getpid()
@@ -385,6 +387,7 @@ func (s *Proxy) serveAdmin() {
 		eh <- hs.Serve(l)
 	}(s.ladmin)
 
+	// 等待admin的http server
 	select {
 	case <-s.exit.C:
 		log.Warnf("[%p] admin shutdown", s)
@@ -402,15 +405,19 @@ func (s *Proxy) serveProxy() {
 	log.Warnf("[%p] proxy start service on %s", s, s.lproxy.Addr())
 
 	eh := make(chan error, 1)
+
 	go func(l net.Listener) (err error) {
 		defer func() {
 			eh <- err
 		}()
 		for {
+			// 接受请求
 			c, err := s.acceptConn(l)
 			if err != nil {
 				return err
 			}
+
+			// 开启Session处理client请求
 			NewSession(c, s.config).Start(s.router)
 		}
 	}(s.lproxy)

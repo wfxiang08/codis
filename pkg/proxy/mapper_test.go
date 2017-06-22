@@ -143,6 +143,7 @@ func TestGetOpStrCmd(t *testing.T) {
 }
 
 func TestHashSlot(t *testing.T) {
+	// 注意{}是如何处理的？ 不考虑嵌套
 	var m = map[string]string{
 		"{abc}":           "abc",
 		"{{{abc1}abc2}":   "{{abc1",

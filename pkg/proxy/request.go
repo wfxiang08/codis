@@ -50,6 +50,7 @@ func (r *Request) MakeSubRequest(n int) []Request {
 
 const GOLDEN_RATIO_PRIME_32 = 0x9e370001
 
+// 每个Request都有一个编号，便于在分布式系统中统一log, 跟踪请求，debug, 性能分析
 func (r *Request) Seed16() uint {
 	h32 := uint32(r.UnixNano) + uint32(uintptr(unsafe.Pointer(r)))
 	h32 *= GOLDEN_RATIO_PRIME_32
