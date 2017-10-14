@@ -7,6 +7,7 @@ const MaxGroupId = 9999
 
 type Group struct {
 	Id      int            `json:"id"`
+	// 每一个Group可以包含 GroupServer
 	Servers []*GroupServer `json:"servers"`
 
 	Promoting struct {
@@ -14,6 +15,7 @@ type Group struct {
 		State string `json:"state,omitempty"`
 	} `json:"promoting"`
 
+	// 失去同步? 如何处理呢?
 	OutOfSync bool `json:"out_of_sync"`
 }
 

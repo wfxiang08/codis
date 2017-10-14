@@ -59,6 +59,7 @@ func (c *Conn) CloseReader() error {
 }
 
 func (c *Conn) SetKeepAlivePeriod(d time.Duration) error {
+	// Sock可能是Unix Domain Socket
 	if t, ok := c.Sock.(*net.TCPConn); ok {
 		if err := t.SetKeepAlive(d != 0); err != nil {
 			return errors.Trace(err)
@@ -90,6 +91,7 @@ func newConnDecoder(conn *Conn, bufsize int) *Decoder {
 }
 
 func (r *connReader) Read(b []byte) (int, error) {
+	// 设置Timeout
 	if timeout := r.ReaderTimeout; timeout != 0 {
 		if err := r.Sock.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 			return 0, errors.Trace(err)
@@ -101,6 +103,8 @@ func (r *connReader) Read(b []byte) (int, error) {
 		}
 		r.hasDeadline = false
 	}
+
+	// 读取数据?
 	n, err := r.Sock.Read(b)
 	if err != nil {
 		err = errors.Trace(err)

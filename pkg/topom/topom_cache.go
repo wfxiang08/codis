@@ -177,6 +177,8 @@ func (s *Topom) storeCreateGroup(g *models.Group) error {
 
 func (s *Topom) storeUpdateGroup(g *models.Group) error {
 	log.Warnf("update group-[%d]:\n%s", g.Id, g.Encode())
+
+	// 将group的数据保存到store中
 	if err := s.store.UpdateGroup(g); err != nil {
 		log.ErrorErrorf(err, "store: update group-[%d] failed", g.Id)
 		return errors.Errorf("store: update group-[%d] failed", g.Id)

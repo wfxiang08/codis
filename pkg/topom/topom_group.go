@@ -63,6 +63,7 @@ func (s *Topom) ResyncGroup(gid int) error {
 		return err
 	}
 
+	// 获取group信息
 	g, err := ctx.getGroup(gid)
 	if err != nil {
 		return err
@@ -380,6 +381,7 @@ func (s *Topom) trySwitchGroupMaster(gid int, master string, cache *redis.InfoCa
 	log.Warnf("group-[%d] will switch master to server[%d] = %s", g.Id, index, g.Servers[index].Addr)
 
 	g.Servers[0], g.Servers[index] = g.Servers[index], g.Servers[0]
+	// group信息被修改了，需要同步
 	g.OutOfSync = true
 	return s.storeUpdateGroup(g)
 }

@@ -32,8 +32,10 @@ func newApiServer(t *Topom) http.Handler {
 	m := martini.New()
 	m.Use(martini.Recovery())
 	m.Use(render.Renderer())
+
 	m.Use(func(w http.ResponseWriter, req *http.Request, c martini.Context) {
 		path := req.URL.Path
+		// 添加Filter, 打印异常日志
 		if req.Method != "GET" && strings.HasPrefix(path, "/api/") {
 			var remoteAddr = req.RemoteAddr
 			var headerAddr string
@@ -59,16 +61,23 @@ func newApiServer(t *Topom) http.Handler {
 	r.Get("/", func(r render.Render) {
 		r.Redirect("/topom")
 	})
+
+	// 提供profile相关信息:
+	//    _ "net/http/pprof"
+	//
 	r.Any("/debug/**", func(w http.ResponseWriter, req *http.Request) {
 		http.DefaultServeMux.ServeHTTP(w, req)
 	})
 
+	// 获取拓扑信息(topo model)
 	r.Group("/topom", func(r martini.Router) {
 		r.Get("", api.Overview)
 		r.Get("/model", api.Model)
 		r.Get("/stats", api.StatsNoXAuth)
 		r.Get("/slots", api.SlotsNoXAuth)
 	})
+
+	// 其他的信息
 	r.Group("/api/topom", func(r martini.Router) {
 		r.Get("/model", api.Model)
 		r.Get("/xping/:xauth", api.XPing)
@@ -86,6 +95,7 @@ func newApiServer(t *Topom) http.Handler {
 		r.Group("/group", func(r martini.Router) {
 			r.Put("/create/:xauth/:gid", api.CreateGroup)
 			r.Put("/remove/:xauth/:gid", api.RemoveGroup)
+			// ResyncGroup
 			r.Put("/resync/:xauth/:gid", api.ResyncGroup)
 			r.Put("/resync-all/:xauth", api.ResyncGroupAll)
 			r.Put("/add/:xauth/:gid/:addr", api.GroupAddServer)
@@ -328,6 +338,7 @@ func (s *apiServer) RemoveGroup(params martini.Params) (int, string) {
 }
 
 func (s *apiServer) ResyncGroup(params martini.Params) (int, string) {
+	// 首先认证
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
 	}
@@ -335,6 +346,8 @@ func (s *apiServer) ResyncGroup(params martini.Params) (int, string) {
 	if err != nil {
 		return rpc.ApiResponseError(err)
 	}
+
+	// 如果同步Group呢?
 	if err := s.topom.ResyncGroup(gid); err != nil {
 		return rpc.ApiResponseError(err)
 	} else {

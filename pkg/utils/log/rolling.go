@@ -40,7 +40,9 @@ const (
 )
 
 func (r *rollingFile) roll() error {
+	// 每次写Log都计算一次suffix, 将suffix和r.fileFrag做一个比较
 	suffix := time.Now().Format(string(r.rolling))
+
 	if r.file != nil {
 		if suffix == r.fileFrag {
 			return nil

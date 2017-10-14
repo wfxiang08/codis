@@ -79,16 +79,26 @@ type Topom struct {
 
 var ErrClosedTopom = errors.New("use of closed topom")
 
+//
+// 这个用在dashboard上
+//
 func New(client models.Client, config *Config) (*Topom, error) {
 	if err := config.Validate(); err != nil {
 		return nil, errors.Trace(err)
 	}
+
+	// 一个product对应一个dashboard, 现在的dashboard只负责管理功能，不负责ui
+	// ui不封由fe来提供
+	// ui中可以看到多个dashboard的数据
+	//
 	if err := models.ValidateProduct(config.ProductName); err != nil {
 		return nil, errors.Trace(err)
 	}
 	s := &Topom{}
 	s.config = config
 	s.exit.C = make(chan struct{})
+
+	// dashboard和redis的关系
 	s.action.redisp = redis.NewPool(config.ProductAuth, config.MigrationTimeout.Duration())
 	s.action.progress.status.Store("")
 
@@ -105,9 +115,13 @@ func New(client models.Client, config *Config) (*Topom, error) {
 	} else {
 		s.model.Sys = strings.TrimSpace(string(b))
 	}
+
+	// dashboard和store的关系
 	s.store = models.NewStore(client, config.ProductName)
 
 	s.stats.redisp = redis.NewPool(config.ProductAuth, time.Second*5)
+
+	// dashboard和servers & proxies的关系
 	s.stats.servers = make(map[string]*RedisStats)
 	s.stats.proxies = make(map[string]*ProxyStats)
 
@@ -199,6 +213,7 @@ func (s *Topom) Start(routines bool) error {
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
+				// 刷新Redis统计
 				w, _ := s.RefreshRedisStats(time.Second)
 				if w != nil {
 					w.Wait()
@@ -425,8 +440,10 @@ func (s *Topom) serveAdmin() {
 
 	eh := make(chan error, 1)
 	go func(l net.Listener) {
+		// 提供http接口
 		h := http.NewServeMux()
 		h.Handle("/", newApiServer(s))
+
 		hs := &http.Server{Handler: h}
 		eh <- hs.Serve(l)
 	}(s.ladmin)

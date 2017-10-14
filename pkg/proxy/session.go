@@ -124,6 +124,7 @@ func (s *Session) Start(d *Router) {
 		}
 
 		// 离线的proxy不能直接访问
+		// 只有在线的proxy才能获取zk等信息的同步
 		if !d.isOnline() {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR router is not online"), true)

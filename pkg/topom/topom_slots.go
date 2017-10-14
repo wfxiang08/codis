@@ -466,6 +466,7 @@ func (s *Topom) SlotsAssignGroup(slots []*models.SlotMapping) error {
 		return err
 	}
 
+	// 检查每一个slot的状态
 	for _, m := range slots {
 		_, err := ctx.getSlotMapping(m.Id)
 		if err != nil {
@@ -485,7 +486,10 @@ func (s *Topom) SlotsAssignGroup(slots []*models.SlotMapping) error {
 
 	for i, m := range slots {
 		if g := ctx.group[m.GroupId]; !g.OutOfSync {
+			// 这个地方会记住?
 			defer s.dirtyGroupCache(g.Id)
+
+			// 没有同步?
 			g.OutOfSync = true
 			if err := s.storeUpdateGroup(g); err != nil {
 				return err

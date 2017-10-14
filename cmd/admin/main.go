@@ -75,6 +75,8 @@ Options:
 		log.SetLevel(log.LevelDebug)
 	}
 
+	// admin设计?
+	// 可以分为三个不同的Target？
 	switch {
 	case d["--proxy"] != nil:
 		new(cmdProxy).Main(d)

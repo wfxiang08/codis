@@ -152,6 +152,7 @@ func (s *Topom) resyncSlotMappings(ctx *context, slots ...*models.SlotMapping) e
 	for _, p := range ctx.proxy {
 		fut.Add()
 		go func(p *models.Proxy) {
+			// 通知所有的Proxy, 填充Slots？
 			err := s.newProxyClient(p).FillSlots(ctx.toSlotSlice(slots, p)...)
 			if err != nil {
 				log.ErrorErrorf(err, "proxy-[%s] resync slots failed", p.Token)

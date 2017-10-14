@@ -75,7 +75,8 @@ func New(config *Config) (*Proxy, error) {
 
 	// 读取proxy的配置信息&所在系统的信息
 	s.model.ProductName = config.ProductName
-	s.model.DataCenter = config.ProxyDataCenter
+	s.model.DataCenter = config.ProxyDataCenter // DataCenter作用?
+
 	s.model.Pid = os.Getpid()
 	s.model.Pwd, _ = os.Getwd()
 	if b, err := exec.Command("uname", "-a").Output(); err != nil {
@@ -94,7 +95,10 @@ func New(config *Config) (*Proxy, error) {
 
 	unsafe2.SetMaxOffheapBytes(config.ProxyMaxOffheapBytes.Int64())
 
+
+	// proxy和dashboard会相互关联
 	go s.serveAdmin()
+
 	go s.serveProxy()
 
 	s.startMetricsJson()
@@ -106,6 +110,8 @@ func New(config *Config) (*Proxy, error) {
 
 func (s *Proxy) setup(config *Config) error {
 	proto := config.ProtoType
+
+	// 监听指定的socket
 	if l, err := net.Listen(proto, config.ProxyAddr); err != nil {
 		return errors.Trace(err)
 	} else {
@@ -119,6 +125,7 @@ func (s *Proxy) setup(config *Config) error {
 		s.model.ProxyAddr = x
 	}
 
+	// 监听指定的admin socket
 	proto = "tcp"
 	if l, err := net.Listen(proto, config.AdminAddr); err != nil {
 		return errors.Trace(err)
@@ -132,6 +139,7 @@ func (s *Proxy) setup(config *Config) error {
 		s.model.AdminAddr = x
 	}
 
+	// Token
 	s.model.Token = rpc.NewToken(
 		config.ProductName,
 		s.lproxy.Addr().String(),
@@ -168,6 +176,7 @@ func (s *Proxy) Start() error {
 	if s.online {
 		return nil
 	}
+	// 标记上线
 	s.online = true
 	s.router.Start()
 	if s.jodis != nil {
@@ -255,6 +264,7 @@ func (s *Proxy) FillSlots(slots []*models.Slot) error {
 		return ErrClosedProxy
 	}
 	for _, m := range slots {
+		// FillSlot该做什么呢?
 		if err := s.router.FillSlot(m); err != nil {
 			return err
 		}
@@ -442,6 +452,7 @@ func (s *Proxy) keepAlive(d time.Duration) {
 		case <-s.exit.C:
 			return
 		case <-ticker.C:
+			// router如何KeepAlive呢?
 			s.router.KeepAlive()
 		}
 	}
@@ -455,6 +466,7 @@ func (s *Proxy) acceptConn(l net.Listener) (net.Conn, error) {
 	for {
 		c, err := l.Accept()
 		if err != nil {
+			// 接受新Connection失败，原因呢?
 			if e, ok := err.(net.Error); ok && e.Temporary() {
 				log.WarnErrorf(err, "[%p] proxy accept new connection failed", s)
 				delay.Sleep()

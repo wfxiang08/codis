@@ -109,6 +109,8 @@ func (s *Router) FillSlot(m *models.Slot) error {
 		return ErrInvalidSlotId
 	}
 	var method forwardMethod
+
+	// 如何forward呢?
 	switch m.ForwardMethod {
 	default:
 		return ErrInvalidMethod
@@ -151,6 +153,7 @@ func (s *Router) dispatchSlot(r *Request, id int) error {
 	if id < 0 || id >= MaxSlotNum {
 		return ErrInvalidSlotId
 	}
+	// 将Request分配到指定的slot上去
 	slot := &s.slots[id]
 	return slot.forward(r, nil)
 }
@@ -158,6 +161,8 @@ func (s *Router) dispatchSlot(r *Request, id int) error {
 func (s *Router) dispatchAddr(r *Request, addr string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// 通过DB来获取Conn
 	if bc := s.pool.primary.Get(addr).BackendConn(r.Database, r.Seed16(), false); bc != nil {
 		bc.PushBack(r)
 		return true
@@ -236,6 +241,9 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	}
 }
 
+//
+//
+//
 func (s *Router) SwitchMasters(masters map[int]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

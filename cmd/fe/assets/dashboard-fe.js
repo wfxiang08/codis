@@ -7,6 +7,9 @@ function genXAuth(name) {
 }
 
 function concatUrl(base, name) {
+    if (!base.startsWith("/codis")) {
+        base = "/codis" + base;
+    }
     if (name) {
         return encodeURI(base + "?forward=" + name);
     } else {
@@ -604,7 +607,7 @@ dashboard.controller('MainCodisCtrl', ['$scope', '$http', '$uibModal', '$timeout
         }
         $scope.resetOverview();
 
-        $http.get('/list').then(function (resp) {
+        $http.get(concatUrl('/list', "")).then(function (resp) {
             $scope.codis_list = resp.data;
         });
 

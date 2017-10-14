@@ -30,6 +30,7 @@ func newApiServer(p *Proxy) http.Handler {
 	m := martini.New()
 	m.Use(martini.Recovery())
 	m.Use(render.Renderer())
+
 	m.Use(func(w http.ResponseWriter, req *http.Request, c martini.Context) {
 		path := req.URL.Path
 		if req.Method != "GET" && strings.HasPrefix(path, "/api/") {
@@ -56,10 +57,14 @@ func newApiServer(p *Proxy) http.Handler {
 	r.Get("/", func(r render.Render) {
 		r.Redirect("/proxy")
 	})
+
+	// _ "net/http/pprof"
+	// Profile
 	r.Any("/debug/**", func(w http.ResponseWriter, req *http.Request) {
 		http.DefaultServeMux.ServeHTTP(w, req)
 	})
 
+	// Group的层次感
 	r.Group("/proxy", func(r martini.Router) {
 		r.Get("", api.Overview)
 		r.Get("/model", api.Model)
@@ -77,6 +82,8 @@ func newApiServer(p *Proxy) http.Handler {
 		r.Put("/forcegc/:xauth", api.ForceGC)
 		r.Put("/shutdown/:xauth", api.Shutdown)
 		r.Put("/loglevel/:xauth/:value", api.LogLevel)
+
+		// 通过api来更新proxy的slot信息
 		r.Put("/fillslots/:xauth", binding.Json([]*models.Slot{}), api.FillSlots)
 		r.Put("/sentinels/:xauth", binding.Json(models.Sentinel{}), api.SetSentinels)
 		r.Put("/sentinels/:xauth/rewatch", api.RewatchSentinels)
@@ -205,6 +212,7 @@ func (s *apiServer) Shutdown(params martini.Params) (int, string) {
 	}
 }
 
+// 来自API
 func (s *apiServer) FillSlots(slots []*models.Slot, params martini.Params) (int, string) {
 	if err := s.verifyXAuth(params); err != nil {
 		return rpc.ApiResponseError(err)
@@ -317,6 +325,7 @@ func (c *ApiClient) Start() error {
 	return rpc.ApiPutJson(url, nil, nil)
 }
 
+// 设置Proxy的LogLevel
 func (c *ApiClient) LogLevel(level log.LogLevel) error {
 	url := c.encodeURL("/api/proxy/loglevel/%s/%s", c.xauth, level)
 	return rpc.ApiPutJson(url, nil, nil)

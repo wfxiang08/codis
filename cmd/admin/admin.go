@@ -37,6 +37,7 @@ func (t *cmdAdmin) Main(d map[string]interface{}) {
 }
 
 func (t *cmdAdmin) newTopomClient(d map[string]interface{}) models.Client {
+
 	var coordinator struct {
 		name string
 		addr string

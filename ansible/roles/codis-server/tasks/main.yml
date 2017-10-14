@@ -5,6 +5,7 @@
 - name: Copy codis-server binary
   copy: src={{ codis_dir }}/bin/codis-server dest={{ codis_install_dir }}/bin/codis-server mode=766
 
+# 下面的工作可以独立出去
 - name: Copy codis-server configuration
   template: src=redis.conf dest={{ codis_install_dir }}/config/redis.conf
 

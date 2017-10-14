@@ -1,3 +1,4 @@
+# 通过伪target, 每次都重新开始
 .DEFAULT_GOAL := build-all
 
 export GO15VENDOREXPERIMENT=1
@@ -9,6 +10,7 @@ codis-deps:
 	@make --no-print-directory -C vendor/github.com/spinlock/jemalloc-go/
 
 codis-dashboard: codis-deps
+    # 如何控制输出结果的名称
 	go build -i -o bin/codis-dashboard ./cmd/dashboard
 	@./bin/codis-dashboard --default-config > config/dashboard.toml
 
@@ -26,6 +28,7 @@ codis-fe: codis-deps
 codis-server:
 	@mkdir -p bin
 	@rm -f bin/codis-server*
+	# -C 指定当前目录, -j4表示并行编译
 	make -j4 -C extern/redis-3.2.8/
 	@cp -f extern/redis-3.2.8/src/redis-server  bin/codis-server
 	@cp -f extern/redis-3.2.8/src/redis-benchmark bin/

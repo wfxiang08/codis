@@ -20,6 +20,7 @@ import (
 */
 import "C"
 
+// 如何获取linux资源使用情况
 type Usage struct {
 	Utime  time.Duration `json:"utime"`
 	Stime  time.Duration `json:"stime"`

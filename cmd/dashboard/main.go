@@ -88,6 +88,7 @@ Options:
 		log.Warnf("option --host-admin = %s", s)
 	}
 
+	// 联系zk等
 	client, err := models.NewClient(config.CoordinatorName, config.CoordinatorAddr, time.Minute)
 	if err != nil {
 		log.PanicErrorf(err, "create '%s' client to '%s' failed", config.CoordinatorName, config.CoordinatorAddr)
@@ -127,6 +128,7 @@ Options:
 	}()
 
 	for i := 0; !s.IsClosed() && !s.IsOnline(); i++ {
+		// 启动dashboard
 		if err := s.Start(true); err != nil {
 			if i <= 15 {
 				log.Warnf("[%p] dashboard online failed [%d]", s, i)

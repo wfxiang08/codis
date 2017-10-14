@@ -1,4 +1,8 @@
 ---
+# 通过 codis 账号登录机器，并且创建目录
+# roles：
+#    在task中绑定 hosts & roles
+#
 - name: codis environment init
   hosts: all
   remote_user: codis

@@ -1,4 +1,5 @@
 ---
+# 拷贝各种bin, 并且启动服务
 - name: Copy codis-admin binary
   copy: src={{ codis_dir }}/bin/codis-admin dest={{ codis_install_dir }}/bin/codis-admin mode=766
 
@@ -11,5 +12,9 @@
 - name: Copy codis-dashboard admin script
   template: src=codis-dashboard-admin.sh dest={{ codis_install_dir }}/admin/codis-dashboard-admin.sh mode=766
 
+#
+# 重启dashboard
+# 重启dashboard的后果?
+#
 - name: Restart codis-dashboard service
   command: "{{ codis_install_dir }}/admin/codis-dashboard-admin.sh restart"

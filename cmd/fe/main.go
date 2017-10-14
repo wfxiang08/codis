@@ -37,6 +37,8 @@ func init() {
 	var dials atomic2.Int64
 	tr := &http.Transport{}
 	tr.Dial = func(network, addr string) (net.Conn, error) {
+		// roundTripper的定制:
+		// 		10s timeout
 		c, err := net.DialTimeout(network, addr, time.Second*10)
 		if err == nil {
 			log.Debugf("rpc: dial new connection to [%d] %s - %s",
@@ -47,12 +49,20 @@ func init() {
 	go func() {
 		for {
 			time.Sleep(time.Minute)
+			// 关闭空闲连接
+			// roundTripper 可以认为是一个支持timeout的连接池
 			tr.CloseIdleConnections()
 		}
 	}()
 	roundTripper = tr
 }
 
+//
+// FE作用:
+//   1. 提供了http server
+//   2. api请求转发, 产品列表获取
+//   3. 前端html，js, css等
+//
 func main() {
 	const usage = `
 Usage:
@@ -71,12 +81,14 @@ Options:
 		log.PanicError(err, "parse arguments failed")
 	}
 
+	// 查看版本
 	if d["--version"].(bool) {
 		fmt.Println("version:", utils.Version)
 		fmt.Println("compile:", utils.Compile)
 		return
 	}
 
+	// 设置日志
 	if s, ok := utils.Argument(d, "--log"); ok {
 		w, err := log.NewRollingFile(s, log.DailyRolling)
 		if err != nil {
@@ -93,6 +105,7 @@ Options:
 		}
 	}
 
+	// 指定CPU个数
 	if n, ok := utils.ArgumentInteger(d, "--ncpu"); ok {
 		runtime.GOMAXPROCS(n)
 	} else {
@@ -100,6 +113,7 @@ Options:
 	}
 	log.Warnf("set ncpu = %d", runtime.GOMAXPROCS(0))
 
+	// 监听端口
 	listen := utils.ArgumentMust(d, "--listen")
 	log.Warnf("set listen = %s", listen)
 
@@ -130,6 +144,7 @@ Options:
 		loader = &StaticLoader{file}
 		log.Warnf("set --dashboard-list = %s", file)
 	} else {
+		// 如何选择coordinator呢?
 		var coordinator struct {
 			name string
 			addr string
@@ -154,6 +169,7 @@ Options:
 
 		log.Warnf("set --%s = %s", coordinator.name, coordinator.addr)
 
+		// 连接到Coordinator
 		c, err := models.NewClient(coordinator.name, coordinator.addr, time.Minute)
 		if err != nil {
 			log.PanicErrorf(err, "create '%s' client to '%s' failed", coordinator.name, coordinator.addr)
@@ -163,8 +179,10 @@ Options:
 		loader = &DynamicLoader{c}
 	}
 
+	// 通过loader来操作?
 	router := NewReverseProxy(loader)
 
+	// 配置martini的参数
 	m := martini.New()
 	m.Use(martini.Recovery())
 	m.Use(render.Renderer())
@@ -172,13 +190,22 @@ Options:
 
 	r := martini.NewRouter()
 	r.Get("/list", func() (int, string) {
+		// 返回产品列表:
+		// 例如:
+		//     codis-main
+		//     codis-pika
 		names := router.GetNames()
+
+		// 如何对字符串排序?
 		sort.Sort(sort.StringSlice(names))
 		return rpc.ApiResponseJson(names)
 	})
 
 	r.Any("/**", func(w http.ResponseWriter, req *http.Request) {
+		// 例如: /codis/topom?forward=codis-main
 		name := req.URL.Query().Get("forward")
+
+		// 通过name来选择Proxy, 再通过Proxy来实现对应的服务
 		if p := router.GetProxy(name); p != nil {
 			p.ServeHTTP(w, req)
 		} else {
@@ -195,6 +222,9 @@ Options:
 	}
 	defer l.Close()
 
+	// pid && pid的删除
+	// kill -2
+	// kill -9
 	if s, ok := utils.Argument(d, "--pidfile"); ok {
 		if pidfile, err := filepath.Abs(s); err != nil {
 			log.WarnErrorf(err, "parse pidfile = '%s' failed", s)
@@ -212,6 +242,9 @@ Options:
 
 	h := http.NewServeMux()
 	h.Handle("/", m)
+
+	// 这个似乎是我添加的? 支持在路径中存在codis这个prefix
+	h.Handle("/codis/", http.StripPrefix("/codis", m))
 	hs := &http.Server{Handler: h}
 	if err := hs.Serve(l); err != nil {
 		log.PanicErrorf(err, "serve %s failed", listen)
@@ -251,15 +284,19 @@ type DynamicLoader struct {
 
 func (l *DynamicLoader) Reload() (map[string]string, error) {
 	var m = make(map[string]string)
+	// list目录
 	list, err := l.client.List(models.CodisDir, false)
+
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 	for _, path := range list {
 		product := filepath.Base(path)
+		// 读取LockPath?
 		if b, err := l.client.Read(models.LockPath(product), false); err != nil {
 			log.WarnErrorf(err, "read topom of product %s failed", product)
 		} else if b != nil {
+			// 解析Topom数据
 			var t = &models.Topom{}
 			if err := json.Unmarshal(b, t); err != nil {
 				log.WarnErrorf(err, "decode json failed")
@@ -274,7 +311,10 @@ func (l *DynamicLoader) Reload() (map[string]string, error) {
 type ReverseProxy struct {
 	sync.Mutex
 	loadAt time.Time
+	// 如何读取Config呢?
 	loader ConfigLoader
+
+	// 每一个产品存在一个ReverseProxy, 通过它对外提供服务
 	routes map[string]*httputil.ReverseProxy
 }
 
@@ -297,6 +337,8 @@ func (r *ReverseProxy) reload(d time.Duration) {
 			if name == "" || host == "" {
 				continue
 			}
+
+			// Proxy如何实习呢?
 			u := &url.URL{Scheme: "http", Host: host}
 			p := httputil.NewSingleHostReverseProxy(u)
 			p.Transport = roundTripper

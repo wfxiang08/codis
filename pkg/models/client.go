@@ -28,6 +28,7 @@ type Client interface {
 	CreateEphemeralInOrder(path string, data []byte) (<-chan struct{}, string, error)
 }
 
+// 工厂方法
 func NewClient(coordinator string, addrlist string, timeout time.Duration) (Client, error) {
 	switch coordinator {
 	case "zk", "zookeeper":

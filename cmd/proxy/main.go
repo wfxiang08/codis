@@ -48,8 +48,8 @@ Options:
 		log.PanicError(err, "parse arguments failed")
 	}
 
+	// 处理特殊的请求
 	switch {
-
 	case d["--default-config"]:
 		fmt.Println(proxy.DefaultConfig)
 		return
@@ -77,6 +77,8 @@ Options:
 		}
 	}
 
+	// ulimit的限制:
+	// 		注意ulimit可以在系统中配置，如果是systemctl控制，也需要在service文件中配置
 	if n, ok := utils.ArgumentInteger(d, "--ulimit"); ok {
 		b, err := exec.Command("/bin/sh", "-c", "ulimit -n").Output()
 		if err != nil {
@@ -103,6 +105,7 @@ Options:
 	}
 	log.Warnf("set ncpu = %d, max-ncpu = %d", ncpu, maxncpu)
 
+	// 可以自适应调整CPU个数
 	if ncpu < maxncpu {
 		go AutoGOMAXPROCS(ncpu, maxncpu)
 	}
@@ -133,8 +136,8 @@ Options:
 		addr string
 	}
 
+	// 也可以不指定: coordinator
 	switch {
-
 	case d["--zookeeper"] != nil:
 		coordinator.name = "zookeeper"
 		coordinator.addr = utils.ArgumentMust(d, "--zookeeper")
@@ -164,6 +167,7 @@ Options:
 		}
 	}
 
+	// 创建Proxy
 	s, err := proxy.New(config)
 	if err != nil {
 		log.PanicErrorf(err, "create proxy with config file failed\n%s", config)
@@ -172,6 +176,7 @@ Options:
 
 	log.Warnf("create proxy with config\n%s", config)
 
+	// pid文件的管理
 	if s, ok := utils.Argument(d, "--pidfile"); ok {
 		if pidfile, err := filepath.Abs(s); err != nil {
 			log.WarnErrorf(err, "parse pidfile = '%s' failed", s)
@@ -187,24 +192,38 @@ Options:
 		}
 	}
 
+	// 信号的管理
 	go func() {
 		defer s.Close()
 		c := make(chan os.Signal, 1)
+		// kill -2
+		// kill -9
+		// kill -12 都可以杀死proxy
 		signal.Notify(c, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
 
 		sig := <-c
 		log.Warnf("[%p] proxy receive signal = '%v'", s, sig)
 	}()
 
+	// Proxy启动时关注的问题:
+	//		Slot的分配
+	//      可以直接从dashboard获取信息, 或者从zk等coordinator获取信息，或者slots信息中获取
 	switch {
 	case dashboard != "":
+		// /usr/local/codis/bin/codis-proxy --config=config/proxy.toml --dashboard=172.20.2.26:18080 --log=log/codis-proxy.log --log-level=INFO --ncpu=8 --pidfile=codis-proxy.pid
+		// 这种情况下如何处理呢?
+		// 如果dashboard挂了，那么proxy会自己维护自己的信息；除非proxy也同时挂了，然后重启.....
 		go AutoOnlineWithDashboard(s, dashboard)
+
 	case coordinator.name != "":
+		// 如果没有指定dashboard, 那么proxy如何自我更新呢?
 		go AutoOnlineWithCoordinator(s, coordinator.name, coordinator.addr)
 	case slots != nil:
+		// 直接使用静态的配置启用Proxy
 		go AutoOnlineWithFillSlots(s, slots)
 	}
 
+	// 如何等待上线呢?
 	for !s.IsClosed() && !s.IsOnline() {
 		log.Warnf("[%p] proxy waiting online ...", s)
 		time.Sleep(time.Second)
@@ -212,6 +231,7 @@ Options:
 
 	log.Warnf("[%p] proxy is working ...", s)
 
+	// 等待退出
 	for !s.IsClosed() {
 		time.Sleep(time.Second)
 	}
@@ -219,6 +239,7 @@ Options:
 	log.Warnf("[%p] proxy is exiting ...", s)
 }
 
+// 自动调节CPU的使用个数
 func AutoGOMAXPROCS(min, max int) {
 	for {
 		var ncpu = runtime.GOMAXPROCS(0)
@@ -266,6 +287,7 @@ func AutoOnlineWithDashboard(p *proxy.Proxy, dashboard string) {
 		if p.IsClosed() || p.IsOnline() {
 			return
 		}
+		// 尝试上线Proxy
 		if OnlineProxy(p, dashboard) {
 			return
 		}
@@ -284,9 +306,15 @@ func AutoOnlineWithCoordinator(p *proxy.Proxy, name, addr string) {
 		if p.IsClosed() || p.IsOnline() {
 			return
 		}
+		// 利用product name等加载Topom, 然后再上线Proxy
 		t, err := models.LoadTopom(client, p.Config().ProductName, false)
 		if err != nil {
 			log.WarnErrorf(err, "load & decode topom failed")
+			// 不管是否指定dashboard, 最终和proxy交互的只有dashbard, 也就是
+			// proxy1 <--->|
+			// proxy2 <--->|<--> Dashboard <---> Coordinate
+			// 如果proxy出现不同步可能是一个很危险的事情
+			//
 		} else if t != nil && OnlineProxy(p, t.AdminAddr) {
 			return
 		}
@@ -295,6 +323,7 @@ func AutoOnlineWithCoordinator(p *proxy.Proxy, name, addr string) {
 	log.Panicf("online proxy failed")
 }
 
+// 直接手动指定
 func AutoOnlineWithFillSlots(p *proxy.Proxy, slots []*models.Slot) {
 	if err := p.FillSlots(slots); err != nil {
 		log.PanicErrorf(err, "fill slots failed")
@@ -311,11 +340,16 @@ func OnlineProxy(p *proxy.Proxy, dashboard string) bool {
 		log.WarnErrorf(err, "rpc fetch model failed")
 		return false
 	}
+
+	//
+	// Proxy到底通过client发送了什么信息到dashboard呢?
+	//
 	if t.ProductName != p.Config().ProductName {
 		log.Panicf("unexcepted product name, got model =\n%s", t.Encode())
 	}
 	client.SetXAuth(p.Config().ProductName)
 
+	// Proxy将自己的AdminAddress提交给Dashboard, 然后再是zk等
 	if err := client.OnlineProxy(p.Model().AdminAddr); err != nil {
 		log.WarnErrorf(err, "rpc online proxy failed")
 		return false
