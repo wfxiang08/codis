@@ -66,5 +66,6 @@ func (s *Slot) unblock() {
 }
 
 func (s *Slot) forward(r *Request, hkey []byte) error {
+	// 由不同的method来实习forward
 	return s.method.Forward(s, r, hkey)
 }

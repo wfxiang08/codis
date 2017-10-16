@@ -81,6 +81,8 @@ func NewRequestChanBuffer(n int) *RequestChan {
 	var ch = &RequestChan{
 		buff: make([]*Request, n),
 	}
+
+	// condition是和lock关联的
 	ch.cond = sync.NewCond(&ch.lock)
 	return ch
 }
@@ -115,10 +117,16 @@ func (c *RequestChan) PopFront() (*Request, bool) {
 	return r, ok
 }
 
+// lockedPushBack
+// lockedPopFront
+// 在内存管理时都不要自己管理lock, 统一交给外部函数来管理
+//
 func (c *RequestChan) lockedPushBack(r *Request) int {
 	if c.closed {
 		panic("send on closed chan")
 	}
+
+	// 通过Signal
 	if c.waits != 0 {
 		c.cond.Signal()
 	}
@@ -131,9 +139,10 @@ func (c *RequestChan) lockedPopFront() (*Request, bool) {
 		if c.closed {
 			return nil, false
 		}
+		// 如果没有数据，则立马做内存整理(调整），然后在等待
 		c.data = c.buff[:0]
 		c.waits++
-		c.cond.Wait()
+		c.cond.Wait() // 这里在等待时，是否会出现: lockedPushBack 无法获取Lock呢?
 		c.waits--
 	}
 	var r = c.data[0]
@@ -149,6 +158,8 @@ func (c *RequestChan) PopFrontAll(onRequest func(r *Request) error) error {
 	for {
 		r, ok := c.PopFront()
 		if ok {
+			// Request在同步处理模式下，先排队；
+			// 在出队列时需要等待Response
 			if err := onRequest(r); err != nil {
 				return err
 			}

@@ -120,6 +120,8 @@ func (s *Store) Acquire(topom *Topom) error {
 }
 
 func (s *Store) Release() error {
+	// 这一块如何手动处理呢？
+	// dashboard意外挂了，应该不是非常紧急
 	return s.client.Delete(s.LockPath())
 }
 

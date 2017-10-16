@@ -46,6 +46,8 @@ func (s *Router) Start() {
 	if s.closed {
 		return
 	}
+	// Router开始上线状态，可以对外提供服务
+	// Dashboard等挂了，也不会影响Router
 	s.online = true
 }
 
@@ -57,6 +59,7 @@ func (s *Router) Close() {
 	}
 	s.closed = true
 
+	// 清空slots状态
 	for i := range s.slots {
 		s.fillSlot(&models.Slot{Id: i}, false, nil)
 	}
@@ -65,6 +68,7 @@ func (s *Router) Close() {
 func (s *Router) GetSlots() []*models.Slot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	slots := make([]*models.Slot, MaxSlotNum)
 	for i := range s.slots {
 		slots[i] = s.slots[i].snapshot()
@@ -213,6 +217,8 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 			slot.replicaGroups = append(slot.replicaGroups, group)
 		}
 	}
+
+	// 每个slot有自己的处理方式
 	if method != nil {
 		slot.method = method
 	}

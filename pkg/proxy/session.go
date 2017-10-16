@@ -196,6 +196,7 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 				return err
 			}
 		} else {
+			// 交给tasks来管理？
 			tasks.PushBack(r)
 		}
 	}
@@ -221,6 +222,7 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 	p.MaxBuffered = maxPipelineLen / 2
 
 	return tasks.PopFrontAll(func(r *Request) error {
+		// 等待，处理Response
 		resp, err := s.handleResponse(r)
 		if err != nil {
 			resp = redis.NewErrorf("ERR handle response, %s", err)
@@ -246,6 +248,7 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 }
 
 func (s *Session) handleResponse(r *Request) (*redis.Resp, error) {
+	// 等待Request返回
 	r.Batch.Wait()
 	if r.Coalesce != nil {
 		if err := r.Coalesce(); err != nil {

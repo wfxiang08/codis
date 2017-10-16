@@ -5,6 +5,7 @@ package models
 
 import "strings"
 
+// 同步和半异步的区别?
 const (
 	ForwardSync = iota
 	ForwardSemiAsync

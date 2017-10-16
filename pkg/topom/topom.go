@@ -26,6 +26,7 @@ import (
 )
 
 type Topom struct {
+	// 锁定内部状态
 	mu sync.Mutex
 
 	xauth string
@@ -181,6 +182,7 @@ func (s *Topom) Close() error {
 
 	defer s.store.Close()
 
+	// 退出时释放Lock
 	if s.online {
 		if err := s.store.Release(); err != nil {
 			log.ErrorErrorf(err, "store: release lock of %s failed", s.config.ProductName)
@@ -199,6 +201,7 @@ func (s *Topom) Start(routines bool) error {
 	if s.online {
 		return nil
 	} else {
+		// 每一个Product只运行启动一个Dashboard,
 		if err := s.store.Acquire(s.model); err != nil {
 			log.ErrorErrorf(err, "store: acquire lock of %s failed", s.config.ProductName)
 			return errors.Errorf("store: acquire lock of %s failed", s.config.ProductName)
@@ -210,6 +213,7 @@ func (s *Topom) Start(routines bool) error {
 		return nil
 	}
 
+	// 所有的Goroutine还是最好能自动退出
 	go func() {
 		for !s.IsClosed() {
 			if s.IsOnline() {
@@ -381,12 +385,14 @@ func (s *Topom) Config() *Config {
 func (s *Topom) IsOnline() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.online && !s.closed
 }
 
 func (s *Topom) IsClosed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.closed
 }
 

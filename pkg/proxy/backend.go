@@ -78,6 +78,7 @@ func (bc *BackendConn) PushBack(r *Request) {
 	bc.input <- r
 }
 
+// 通过Keepalive来检测状态
 func (bc *BackendConn) KeepAlive() bool {
 	if len(bc.input) != 0 {
 		return false
